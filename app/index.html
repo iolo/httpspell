@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"/>
+    <title>httpspell</title>
+    <style>
+        #editor {
+            width: 90%;
+            height: 300px;
+        }
+
+        #suggestPane {
+            background: silver;
+            border: 1px solid red;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<h1>httpspell</h1>
+
+<p>httpspell is a simple http binding for <a href="http://hunspell.sf.net">hunspell</a>.</p>
+
+<div>
+    <div>
+        <textarea id="editor" spellcheck="false">한글는 알흠답다. 그러나 골치아프다.
+            the quick browm fox jumps over the lazyy dogg.</textarea>
+    </div>
+
+    <div>
+        <label for="langSelect">language:</label>
+        <select id="langSelect">
+            <option value="ko" selected>ko</option>
+            <option value="en_US">en_US</option>
+        </select>
+        <button type="button" id="startBtn">start</button>
+        <button type="button" id="wysiwygBtn">switch to wysiwyg(with summernote)</button>
+    </div>
+</div>
+
+<div id="suggestPane">
+    <div id="suggestList">
+    </div>
+    <div>
+        <button type="button" id="ignoreBtn">ignore</button>
+        <button type="button" id="stopBtn">stop</button>
+    </div>
+</div>
+
+<p>&copy; 2014 IoloTheBard</p>
+
+<script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
+<script src="//tinymce.cachefly.net/4.1/tinymce.min.js"></script>
+<script>
+    $(function () {
+
+        //-------------------------------------------------
+
+        /**
+         *
+         * @param endpoint
+         * @constructor
+         */
+        function SpellClient(endpoint) {
+            this.endpoint = endpoint || '';
+        }
+
+        SpellClient.prototype.check = function (text, lang, callback) {
+            var req = { text: text, lang: lang };
+            return $.getJSON(this.endpoint + '/check', req, function (res) {
+                callback(res.error, res.result);
+            });
+        };
+
+        SpellClient.prototype.suggest = function (word, lang, callback) {
+            var req = { text: word, lang: lang };
+            return $.getJSON(this.endpoint + '/suggest', req, function (res) {
+                callback(res.error, res.result);
+            });
+        };
+
+        //-------------------------------------------------
+
+        /**
+         *
+         * @param spellClient
+         * @constructor
+         */
+        function SpellController(spellClient) {
+            this.spellClient = spellClient;
+        }
+
+        SpellController.prototype.getText = function () {
+            return $('#editor').val();
+        };
+
+        SpellController.prototype.getLang = function () {
+            return $('#langSelect').val();
+        };
+
+        SpellController.prototype.mark = function (word) {
+            if (tinymce && tinymce.activeEditor) {
+                return tinymce.activeEditor.getWin().find(word, true, false, false, false, true, false);
+            }
+
+            var text = this.getText();
+            var index = text.indexOf(word, this.markEnd);
+            if (index < 0) {
+                return false;
+            }
+
+            this.markStart = index;
+            this.markEnd = index + word.length;
+            $('#editor')[0].setSelectionRange(this.markStart, this.markEnd);
+
+            return true;
+        };
+
+        SpellController.prototype.correct = function (word) {
+            if (tinymce && tinymce.activeEditor) {
+                return tinymce.activeEditor.execCommand('insertText', false, word);
+            }
+
+            var text = this.getText();
+            $('#editor').val(text.substring(0, this.markStart) + word + text.substring(this.markEnd));
+        };
+
+        SpellController.prototype.start = function () {
+            var self = this;
+            this.spellClient.check(this.getText(), this.getLang(), function (err, res) {
+                if (err) {
+                    console.log(err);
+                    alert('check error!')
+                    return;
+                }
+
+                self.words = res;
+                self.wordIndex = 0;
+                self.markStart = self.markEnd = 0;
+
+                if (tinymce && tinymce.activeEditor) {
+                    tinymce.activeEditor.execCommand('selectAll');
+                    tinymce.activeEditor.selection.collapse(true);
+                }
+
+                self.next();
+            });
+        };
+
+        SpellController.prototype.stop = function () {
+            $('#suggestPane').hide();
+        };
+
+        SpellController.prototype.next = function () {
+            if (this.wordIndex >= this.words.length) {
+                return this.stop();
+            }
+            var word = this.words[this.wordIndex++];
+            if (word.correct) {
+                return this.next();
+            }
+            var self = this;
+            this.spellClient.suggest(word.word, this.getLang(), function (err, res) {
+                if (err) {
+                    console.log(err);
+                    alert('suggest error!')
+                    return self.next();
+                }
+
+                var word = res[0];
+                if (!self.mark(word.word)) {
+                    return self.next();
+                }
+                if (word.suggest.length <= 0) {
+                    //$('#suggestList').html('no suggestions');
+                    return self.next();
+                }
+
+                $('#suggestList')
+                        .empty()
+                        .html('<ul><li>' + word.suggest.join('</li><li>') + '</li></ul>');
+
+                $('#suggestList li')
+                        .off('click')
+                        .click(function () {
+                            self.correct($(this).text());
+                            self.next();
+                        });
+                $('#suggestPane').show();
+
+            });
+        };
+
+        //-------------------------------------------------
+
+        var spellController = new SpellController(new SpellClient());
+
+        $('#startBtn').click(function () {
+            spellController.start();
+        });
+
+        $('#wysiwygBtn').click(function () {
+            tinymce.init({selector: '#editor'});
+        });
+
+        $('#ignoreBtn').click(function () {
+            spellController.next();
+        });
+
+        $('#stopBtn').click(function () {
+            spellController.stop();
+        });
+    });
+</script>
+</body>
+</html>

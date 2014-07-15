@@ -1,0 +1,18 @@
+{
+    "name": "httpspell",
+    "version": "0.0.1",
+    "description": "simple http server for hunspell",
+    "author": "Dongsu Jang <iolothebard@gmail.com>",
+    "repository": {
+        "type": "git",
+        "url": "git@github.com:iolo/httpspell.git"
+    },
+    "license": "MIT",
+    "engines": {
+        "node": "~0.10"
+    },
+    "dependencies": {
+        "debug": "~1.0.2",
+        "nodehun": "^0.2.4"
+    }
+}
